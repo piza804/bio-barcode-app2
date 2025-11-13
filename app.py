@@ -13,56 +13,45 @@ firebase_admin.initialize_app(cred)
 db = firestore.client()
 
 # -------------------------------
-# ホームページ（バーコードスキャン）
+# ルートページ
 # -------------------------------
-@app.route('/')
+@app.route("/")
 def index():
-    return render_template('index.html')
+    return render_template("index.html")
 
 # -------------------------------
-# バーコード受信 & DB 登録
+# バーコード受信・登録
 # -------------------------------
-@app.route('/scan', methods=['POST'])
-def scan_barcode():
+@app.route("/scan", methods=["POST"])
+def scan():
     data = request.json
-    barcode = data.get('barcode')
-    
+    barcode = data.get("barcode")
     if not barcode:
-        return jsonify({"error": "barcode missing"}), 400
-    
-    # DB で既存チェック
+        return jsonify({"status":"error","message":"バーコードがありません"}), 400
+
+    # Firestoreに既存か確認
     docs = db.collection("reagents").where("barcode","==",barcode).get()
     if docs:
-        reagent = docs[0].to_dict()
-        return jsonify({"status": "exists", "data": reagent})
+        doc = docs[0]
+        new_qty = doc.to_dict().get("qty",0) + 1
+        db.collection("reagents").document(doc.id).update({
+            "qty": new_qty,
+            "updated_at": datetime.now()
+        })
+        action = "更新"
     else:
-        # 新規登録用の初期情報
-        return jsonify({"status": "new", "barcode": barcode})
+        # 新規登録（仮の名前・数量1）
+        doc_ref = db.collection("reagents").add({
+            "barcode": barcode,
+            "name": f"新規試薬 {barcode}",
+            "qty": 1,
+            "expiration": "",
+            "created_at": datetime.now(),
+            "updated_at": datetime.now()
+        })
+        action = "新規登録"
 
-# -------------------------------
-# 新規登録
-# -------------------------------
-@app.route('/register', methods=['POST'])
-def register():
-    data = request.json
-    barcode = data.get('barcode')
-    name = data.get('name')
-    qty = data.get('qty')
-    expiration = data.get('expiration')
-    
-    if not all([barcode, name, qty, expiration]):
-        return jsonify({"error": "missing fields"}), 400
-    
-    db.collection("reagents").add({
-        "barcode": barcode,
-        "name": name,
-        "qty": qty,
-        "expiration": expiration,
-        "created_at": datetime.now(),
-        "updated_at": datetime.now()
-    })
-    return jsonify({"status": "registered"})
-    
+    return jsonify({"status":"ok","action":action, "barcode":barcode})
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     app.run(debug=True)
