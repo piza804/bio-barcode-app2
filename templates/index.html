@@ -1,43 +1,44 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="utf-8">
     <title>バーコードスキャン</title>
-    <script src="{{ url_for('static', filename='quagga.min.js') }}"></script>
+    <script src="https://unpkg.com/@ericblade/quagga2@v0.0.9/dist/quagga.min.js"></script>
 </head>
 <body>
-    <h2>リアルタイムバーコードスキャン</h2>
-    <div id="scanner-container" style="width:400px; height:300px;"></div>
-    <p id="status">スキャン待ち...</p>
+    <h1>バーコードスキャン</h1>
+    <div id="scanner" style="width:400px; height:300px;"></div>
+    <p id="result">バーコード未検出</p>
 
     <script>
     Quagga.init({
-        inputStream: {
-            type: "LiveStream",
-            target: document.querySelector('#scanner-container'),
-            constraints: { facingMode: "environment" }
+        inputStream: { 
+            type : "LiveStream",
+            constraints: { facingMode: "environment" },
+            target: document.querySelector('#scanner')
         },
-        decoder: { readers: ["code_128_reader","ean_reader","upc_reader"] }
+        decoder : { readers : ["code_128_reader","ean_reader","upc_reader"] }
     }, function(err) {
-        if(err){ console.error(err); return; }
-        Quagga.start();
+        if (err) console.log(err);
+        else Quagga.start();
     });
 
-    Quagga.onDetected(function(result){
-        const code = result.codeResult.code;
-        document.getElementById("status").innerText = "検出: " + code;
+    Quagga.onDetected(function(data){
+        const code = data.codeResult.code;
+        document.getElementById("result").textContent = "検出: " + code;
 
-        // Flask に自動送信
+        // FlaskにPOST
         fetch("/scan", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ "barcode": code })
+            headers: { "Content-Type":"application/json" },
+            body: JSON.stringify({ barcode: code })
         })
-        .then(resp => resp.json())
-        .then(data => {
-            console.log(data);
-            document.getElementById("status").innerText = 
-                `バーコード ${data.barcode} ${data.action}`;
-        });
+        .then(res => res.json())
+        .then(resp => {
+            console.log(resp);
+            alert(`バーコード: ${resp.barcode}\nアクション: ${resp.action}`);
+        })
+        .catch(err => console.error(err));
     });
     </script>
 </body>
