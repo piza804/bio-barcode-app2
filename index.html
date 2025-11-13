@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Barcode Scanner</title>
+  <script src="https://unpkg.com/@ericblade/quagga2@v0.0.9/dist/quagga.min.js"></script>
+</head>
+<body>
+<h2>バーコードスキャン</h2>
+<div id="scanner" style="width: 400px; height: 300px;"></div>
+<div id="result"></div>
+<div id="form-container"></div>
+
+<script>
+Quagga.init({
+    inputStream: { type: "LiveStream", target: document.querySelector('#scanner'), constraints: { facingMode: "environment" } },
+    decoder: { readers: ["code_128_reader","ean_reader","upc_reader"] }
+}, function(err) {
+    if(err){ console.error(err); return; }
+    Quagga.start();
+});
+
+Quagga.onDetected(async function(result){
+    const code = result.codeResult.code;
+    document.getElementById('result').innerText = "検出: " + code;
+
+    // Flask に送信
+    const resp = await fetch('/scan', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({barcode: code})
+    });
+    const data = await resp.json();
+
+    // 自動でフォーム表示
+    const formDiv = document.getElementById('form-container');
+    formDiv.innerHTML = '';  // クリア
+    if(data.status === 'exists'){
+        formDiv.innerHTML = `<p>既存試薬: ${data.data.name}（数量: ${data.data.qty}）</p>`;
+    } else if(data.status === 'new'){
+        formDiv.innerHTML = `
+            <h3>新規登録</h3>
+            <input id="name" placeholder="試薬名" /><br/>
+            <input id="qty" type="number" placeholder="数量" /><br/>
+            <input id="exp" type="date" /><br/>
+            <button onclick="register()">登録</button>
+        `;
+    }
+
+    window.barcode = code;  // 登録時に使用
+});
+
+async function register(){
+    const name = document.getElementById('name').value;
+    const qty = parseInt(document.getElementById('qty').value);
+    const exp = document.getElementById('exp').value;
+
+    const resp = await fetch('/register', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({barcode: window.barcode, name, qty, expiration: exp})
+    });
+    const data = await resp.json();
+    if(data.status === 'registered'){
+        alert("登録成功！");
+        document.getElementById('form-container').innerHTML = '';
+    }
+}
+</script>
+</body>
+</html>
